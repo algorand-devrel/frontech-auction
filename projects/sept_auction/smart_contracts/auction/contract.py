@@ -20,6 +20,7 @@ class Bidder(arc4.Struct, kw_only=True):
 
 class Auction(ARC4Contract):
     def __init__(self) -> None:
+        self.settled: bool = False
         self.asset: Asset
         self.max_quantity: UInt64
 
@@ -32,8 +33,11 @@ class Auction(ARC4Contract):
 
     @arc4.abimethod
     def deposit(self, payment: gtxn.PaymentTransaction) -> None:
-        # FIXME: Stop deposit once the auction is over.
-        assert payment.receiver == Global.current_application_address
+        assert not self.settled
+
+        assert (
+            payment.receiver == Global.current_application_address
+        ), "The payment is fraudulent"
         assert payment.amount > 0
 
         if Txn.sender not in self.bidders:
@@ -49,7 +53,8 @@ class Auction(ARC4Contract):
 
     @arc4.abimethod
     def bid(self, price: arc4.UInt64, quantity: arc4.UInt64) -> None:
-        # FIXME: Stop bids once the auction is over.
+        assert not self.settled
+
         current_deposited = self.bidders[Txn.sender].deposited.native
 
         assert quantity.native <= self.max_quantity
@@ -66,7 +71,8 @@ class Auction(ARC4Contract):
         price: arc4.UInt64,
         quantity: arc4.UInt64,
     ) -> None:
-        # FIXME: We need to stop the auction once it's been accepted.
+        assert not self.settled
+
         assert Txn.sender == Global.creator_address
 
         accepted_bidder = self.bidders[bidder].copy()
@@ -79,9 +85,13 @@ class Auction(ARC4Contract):
         assert accepted_bidder.price == price
         assert accepted_bidder.quantity == quantity
 
+        total_price = accepted_bidder.quantity.native * accepted_bidder.price.native
+        itxn.Payment(
+            receiver=bidder, amount=accepted_bidder.deposited.native - total_price
+        ).submit()
         itxn.Payment(
             receiver=Txn.sender,
-            amount=accepted_bidder.quantity.native * accepted_bidder.price.native,
+            amount=total_price,
         ).submit()
 
     @arc4.abimethod

@@ -1,6 +1,11 @@
 #pragma version 10
 
 smart_contracts.auction.contract.Auction.approval_program:
+    txn ApplicationID
+    bnz main_entrypoint@2
+    callsub __init__
+
+main_entrypoint@2:
     callsub __puya_arc4_router__
     return
 
@@ -119,11 +124,17 @@ create:
 // smart_contracts.auction.contract.Auction.deposit(payment: uint64) -> void:
 deposit:
     proto 1 0
+    int 0
+    byte "settled"
+    app_global_get_ex
+    assert // check self.settled exists
+    !
+    assert
     frame_dig -1
     gtxns Receiver
     global CurrentApplicationAddress
     ==
-    assert
+    assert // The payment is fraudulent
     frame_dig -1
     gtxns Amount
     dup
@@ -176,6 +187,12 @@ deposit_after_if_else@3:
 // smart_contracts.auction.contract.Auction.bid(price: bytes, quantity: bytes) -> void:
 bid:
     proto 2 0
+    int 0
+    byte "settled"
+    app_global_get_ex
+    assert // check self.settled exists
+    !
+    assert
     byte "bidders"
     txn Sender
     concat
@@ -227,6 +244,12 @@ bid:
 // smart_contracts.auction.contract.Auction.accept(settlement: uint64, bidder: bytes, price: bytes, quantity: bytes) -> void:
 accept:
     proto 4 0
+    int 0
+    byte "settled"
+    app_global_get_ex
+    assert // check self.settled exists
+    !
+    assert
     txn Sender
     global CreatorAddress
     ==
@@ -264,7 +287,7 @@ accept:
     dig 1
     ==
     assert
-    uncover 2
+    dig 2
     extract 8 8 // on error: Index access is out of bounds
     dup
     frame_dig -2
@@ -274,14 +297,26 @@ accept:
     frame_dig -1
     b==
     assert
+    btoi
+    *
+    itxn_begin
+    swap
+    extract 0 8 // on error: Index access is out of bounds
+    btoi
+    dig 1
+    -
+    itxn_field Amount
+    frame_dig -3
+    itxn_field Receiver
+    int pay
+    itxn_field TypeEnum
+    int 0
+    itxn_field Fee
+    itxn_submit
     itxn_begin
     txn Sender
-    swap
-    btoi
-    uncover 2
-    *
-    itxn_field Amount
     itxn_field Receiver
+    itxn_field Amount
     int pay
     itxn_field TypeEnum
     int 0
@@ -315,4 +350,13 @@ retract:
     int 0
     itxn_field Fee
     itxn_submit
+    retsub
+
+
+// smart_contracts.auction.contract.Auction.__init__() -> void:
+__init__:
+    proto 0 0
+    byte "settled"
+    int 0
+    app_global_put
     retsub
