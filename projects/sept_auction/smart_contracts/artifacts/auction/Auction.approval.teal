@@ -1,0 +1,318 @@
+#pragma version 10
+
+smart_contracts.auction.contract.Auction.approval_program:
+    callsub __puya_arc4_router__
+    return
+
+
+// smart_contracts.auction.contract.Auction.__puya_arc4_router__() -> uint64:
+__puya_arc4_router__:
+    proto 0 1
+    txn NumAppArgs
+    bz __puya_arc4_router___after_if_else@10
+    method "create(asset,uint64)void"
+    method "deposit(pay)void"
+    method "bid(uint64,uint64)void"
+    method "accept(axfer,account,uint64,uint64)void"
+    method "retract()void"
+    txna ApplicationArgs 0
+    match __puya_arc4_router___create_route@2 __puya_arc4_router___deposit_route@3 __puya_arc4_router___bid_route@4 __puya_arc4_router___accept_route@5 __puya_arc4_router___retract_route@6
+    int 0
+    retsub
+
+__puya_arc4_router___create_route@2:
+    txn OnCompletion
+    !
+    assert // OnCompletion is NoOp
+    txn ApplicationID
+    !
+    assert // is creating
+    txna ApplicationArgs 1
+    btoi
+    txnas Assets
+    txna ApplicationArgs 2
+    btoi
+    callsub create
+    int 1
+    retsub
+
+__puya_arc4_router___deposit_route@3:
+    txn OnCompletion
+    !
+    assert // OnCompletion is NoOp
+    txn ApplicationID
+    assert // is not creating
+    txn GroupIndex
+    int 1
+    -
+    dup
+    gtxns TypeEnum
+    int pay
+    ==
+    assert // transaction type is pay
+    callsub deposit
+    int 1
+    retsub
+
+__puya_arc4_router___bid_route@4:
+    txn OnCompletion
+    !
+    assert // OnCompletion is NoOp
+    txn ApplicationID
+    assert // is not creating
+    txna ApplicationArgs 1
+    txna ApplicationArgs 2
+    callsub bid
+    int 1
+    retsub
+
+__puya_arc4_router___accept_route@5:
+    txn OnCompletion
+    !
+    assert // OnCompletion is NoOp
+    txn ApplicationID
+    assert // is not creating
+    txn GroupIndex
+    int 1
+    -
+    dup
+    gtxns TypeEnum
+    int axfer
+    ==
+    assert // transaction type is axfer
+    txna ApplicationArgs 1
+    btoi
+    txnas Accounts
+    txna ApplicationArgs 2
+    txna ApplicationArgs 3
+    callsub accept
+    int 1
+    retsub
+
+__puya_arc4_router___retract_route@6:
+    txn OnCompletion
+    !
+    assert // OnCompletion is NoOp
+    txn ApplicationID
+    assert // is not creating
+    callsub retract
+    int 1
+    retsub
+
+__puya_arc4_router___after_if_else@10:
+    int 0
+    retsub
+
+
+// smart_contracts.auction.contract.Auction.create(auction_asset: uint64, max_quantity: uint64) -> void:
+create:
+    proto 2 0
+    byte "asset"
+    frame_dig -2
+    app_global_put
+    byte "max_quantity"
+    frame_dig -1
+    app_global_put
+    retsub
+
+
+// smart_contracts.auction.contract.Auction.deposit(payment: uint64) -> void:
+deposit:
+    proto 1 0
+    frame_dig -1
+    gtxns Receiver
+    global CurrentApplicationAddress
+    ==
+    assert
+    frame_dig -1
+    gtxns Amount
+    dup
+    assert
+    byte "bidders"
+    txn Sender
+    concat
+    box_len
+    bury 1
+    bnz deposit_else_body@2
+    itob
+    byte 0x0000000000000000
+    concat
+    byte 0x0000000000000000
+    concat
+    byte "bidders"
+    txn Sender
+    concat
+    swap
+    box_put
+    b deposit_after_if_else@3
+
+deposit_else_body@2:
+    byte "bidders"
+    txn Sender
+    concat
+    box_get
+    assert // check self.bidders entry exists
+    extract 0 8 // on error: Index access is out of bounds
+    btoi
+    +
+    itob
+    byte "bidders"
+    txn Sender
+    concat
+    box_get
+    assert // check self.bidders entry exists
+    swap
+    replace2 0
+    byte "bidders"
+    txn Sender
+    concat
+    swap
+    box_put
+
+deposit_after_if_else@3:
+    retsub
+
+
+// smart_contracts.auction.contract.Auction.bid(price: bytes, quantity: bytes) -> void:
+bid:
+    proto 2 0
+    byte "bidders"
+    txn Sender
+    concat
+    box_get
+    assert // check self.bidders entry exists
+    extract 0 8 // on error: Index access is out of bounds
+    btoi
+    frame_dig -1
+    btoi
+    int 0
+    byte "max_quantity"
+    app_global_get_ex
+    assert // check self.max_quantity exists
+    dig 1
+    >=
+    assert
+    frame_dig -2
+    btoi
+    *
+    >=
+    assert
+    byte "bidders"
+    txn Sender
+    concat
+    box_get
+    assert // check self.bidders entry exists
+    frame_dig -2
+    replace2 8
+    byte "bidders"
+    txn Sender
+    concat
+    swap
+    box_put
+    byte "bidders"
+    txn Sender
+    concat
+    box_get
+    assert // check self.bidders entry exists
+    frame_dig -1
+    replace2 16
+    byte "bidders"
+    txn Sender
+    concat
+    swap
+    box_put
+    retsub
+
+
+// smart_contracts.auction.contract.Auction.accept(settlement: uint64, bidder: bytes, price: bytes, quantity: bytes) -> void:
+accept:
+    proto 4 0
+    txn Sender
+    global CreatorAddress
+    ==
+    assert
+    byte "bidders"
+    frame_dig -3
+    concat
+    dup
+    box_get
+    swap
+    cover 2
+    assert // check self.bidders entry exists
+    box_del
+    pop
+    frame_dig -4
+    gtxns XferAsset
+    int 0
+    byte "asset"
+    app_global_get_ex
+    assert // check self.asset exists
+    ==
+    assert
+    frame_dig -4
+    gtxns AssetReceiver
+    frame_dig -3
+    ==
+    assert
+    frame_dig -4
+    gtxns AssetAmount
+    dig 1
+    extract 16 8 // on error: Index access is out of bounds
+    dup
+    btoi
+    uncover 2
+    dig 1
+    ==
+    assert
+    uncover 2
+    extract 8 8 // on error: Index access is out of bounds
+    dup
+    frame_dig -2
+    b==
+    assert
+    uncover 2
+    frame_dig -1
+    b==
+    assert
+    itxn_begin
+    txn Sender
+    swap
+    btoi
+    uncover 2
+    *
+    itxn_field Amount
+    itxn_field Receiver
+    int pay
+    itxn_field TypeEnum
+    int 0
+    itxn_field Fee
+    itxn_submit
+    retsub
+
+
+// smart_contracts.auction.contract.Auction.retract() -> void:
+retract:
+    proto 0 0
+    byte "bidders"
+    txn Sender
+    concat
+    box_get
+    assert // check self.bidders entry exists
+    byte "bidders"
+    txn Sender
+    concat
+    box_del
+    pop
+    itxn_begin
+    txn Sender
+    swap
+    extract 0 8 // on error: Index access is out of bounds
+    btoi
+    itxn_field Amount
+    itxn_field Receiver
+    int pay
+    itxn_field TypeEnum
+    int 0
+    itxn_field Fee
+    itxn_submit
+    retsub
